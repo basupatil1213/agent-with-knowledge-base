@@ -1,41 +1,55 @@
+import os
 import typer
-from rich.prompt import Prompt
 from typing import Optional
+from rich.prompt import Prompt
+from dotenv import load_dotenv
 
 from phi.agent import Agent
 from phi.model.groq import Groq
 from phi.knowledge.pdf import PDFUrlKnowledgeBase
-from phi.vectordb.chroma import ChromaDb
+from phi.vectordb.pineconedb import PineconeDB
 
-from dotenv import load_dotenv
-
+import nltk
+nltk.data.path.append('/Users/basavarajpatil/nltk_data')
+nltk.download('punkt')
 
 load_dotenv()
 
+api_key = os.getenv("PINECONE_API_KEY")
+index_name = "thai-recipe-hybrid-search"
+
+vector_db = PineconeDB(
+    name=index_name,
+    dimension=1536,
+    metric="cosine",
+    spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
+    api_key=api_key,
+    use_hybrid_search=True,
+    hybrid_alpha=0.5,
+)
 
 knowledge_base = PDFUrlKnowledgeBase(
     urls=["https://phi-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"],
-    vector_db=ChromaDb(collection="recipes"),
+    vector_db=vector_db,
 )
 
 # Comment out after first run
-knowledge_base.load(recreate=False)
+knowledge_base.load(recreate=True, upsert=True)
 
 
-def pdf_agent(user: str = "user"):
+def pinecone_agent(user: str = "user"):
     run_id: Optional[str] = None
-
     agent = Agent(
         model=Groq(
             id="llama-3.3-70b-versatile",
         ),
         run_id=run_id,
         user_id=user,
-        knowledge_base=knowledge_base,
-        use_tools=True,
+        knowledge=knowledge_base,
         show_tool_calls=True,
         debug_mode=True,
     )
+
     if run_id is None:
         run_id = agent.run_id
         print(f"Started Run: {run_id}\n")
@@ -50,4 +64,6 @@ def pdf_agent(user: str = "user"):
 
 
 if __name__ == "__main__":
-    typer.run(pdf_agent)
+    typer.run(pinecone_agent)
+
+
